@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Живой уровень</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --bg2: var(--tg-theme-secondary-bg-color, #f2f3f5);
+    --text: var(--tg-theme-text-color, #1f2328);
+    --hint: var(--tg-theme-hint-color, #8a8f98);
+    --accent: var(--tg-theme-button-color, #2e7d5b);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --done: #2e9d5f;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg2); color: var(--text); font-size: 15px;
+    padding-bottom: 76px;
+  }
+  header { padding: 16px 16px 8px; }
+  header h1 { margin: 0; font-size: 22px; }
+  header .sub { color: var(--hint); font-size: 13px; margin-top: 2px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px 16px; }
+  .stat { background: var(--bg); border-radius: 14px; padding: 10px; text-align: center; }
+  .stat b { display: block; font-size: 20px; }
+  .stat span { font-size: 12px; color: var(--hint); }
+
+  .card { background: var(--bg); border-radius: 16px; margin: 10px 16px; padding: 14px; }
+  .card h2 { margin: 0 0 10px; font-size: 16px; }
+  .muted { color: var(--hint); font-size: 13px; }
+
+  .progress { height: 8px; background: var(--bg2); border-radius: 4px; overflow: hidden; margin: 8px 0 4px; }
+  .progress > div { height: 100%; background: var(--accent); border-radius: 4px; transition: width .3s; }
+
+  .task {
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    padding: 12px 4px; border: 0; border-bottom: 1px solid var(--bg2);
+    background: none; color: var(--text); font-size: 15px; text-align: left; cursor: pointer;
+  }
+  .task:last-child { border-bottom: 0; }
+  .check {
+    flex: 0 0 26px; height: 26px; border-radius: 50%; border: 2px solid var(--hint);
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 15px;
+  }
+  .task.done .check { background: var(--done); border-color: var(--done); }
+  .task.done .title { color: var(--hint); text-decoration: line-through; }
+  .task .title { flex: 1; }
+  .pts { font-size: 13px; color: var(--accent); font-weight: 600; }
+  .task.done .pts { color: var(--hint); }
+
+  .btn {
+    display: block; width: 100%; padding: 13px; border: 0; border-radius: 12px;
+    background: var(--accent); color: var(--accent-text); font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .btn.secondary { background: var(--bg2); color: var(--text); margin-top: 8px; }
+  .btn:disabled { opacity: .45; }
+
+  .stage { padding: 10px 0; border-bottom: 1px solid var(--bg2); }
+  .stage:last-child { border-bottom: 0; }
+  .stage .row { display: flex; justify-content: space-between; gap: 8px; }
+  .stage ul { margin: 6px 0 0; padding-left: 20px; color: var(--hint); font-size: 14px; }
+  .stage.current .name { font-weight: 700; }
+
+  .line { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--bg2); }
+  .line:last-child { border-bottom: 0; }
+
+  nav {
+    position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: var(--bg);
+    border-top: 1px solid var(--bg2); padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  }
+  nav button {
+    flex: 1; border: 0; background: none; color: var(--hint); font-size: 12px; padding: 6px 0; cursor: pointer;
+  }
+  nav button .ic { display: block; font-size: 20px; }
+  nav button.active { color: var(--accent); font-weight: 600; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px);
+    background: rgba(30,30,30,.92); color: #fff; padding: 10px 16px; border-radius: 20px;
+    font-size: 14px; opacity: 0; transition: all .25s; pointer-events: none; max-width: 90%; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🌱 Живой уровень</h1>
+  <div class="sub" id="hello">Делай важное — получай очки</div>
+</header>
+
+<div class="stats-row">
+  <div class="stat"><b id="sBalance">0</b><span>очков</span></div>
+  <div class="stat"><b id="sStreak">0</b><span>дней подряд</span></div>
+  <div class="stat"><b id="sLevel">1</b><span>уровень</span></div>
+</div>
+
+<!-- Вкладка «Сегодня» -->
+<section id="tab-today">
+  <div class="card">
+    <h2 id="todayTitle">Сегодня</h2>
+    <div class="muted" id="todaySummary"></div>
+    <div class="progress"><div id="todayBar" style="width:0"></div></div>
+    <div class="muted" id="dayHint"></div>
+  </div>
+  <div class="card" id="taskList"></div>
+  <div class="card">
+    <h2>🎮 Обмен на игры</h2>
+    <div class="muted" id="gameHint"></div>
+    <div style="height:10px"></div>
+    <button class="btn" id="spendBtn">Обменять очки на игры</button>
+  </div>
+</section>
+
+<!-- Вкладка «Цель» -->
+<section id="tab-goal" class="hidden">
+  <div class="card">
+    <h2>🎯 Освоить геймдев (C# + Unity)</h2>
+    <div class="muted" id="goalSummary"></div>
+    <div class="progress"><div id="goalBar" style="width:0"></div></div>
+    <div class="muted">Каждая отметка «C#» или «Unity» = 1 час к цели.</div>
+  </div>
+  <div class="card" id="stageList"></div>
+</section>
+
+<!-- Вкладка «Статистика» -->
+<section id="tab-stats" class="hidden">
+  <div class="card">
+    <h2>📊 Статистика</h2>
+    <div id="statsList"></div>
+  </div>
+  <div class="card">
+    <h2>🤝 Напарник</h2>
+    <div class="muted">Отправь свой прогресс другу или родителям — вместе проще не сдаваться.</div>
+    <div style="height:10px"></div>
+    <button class="btn" id="shareBtn">Поделиться прогрессом</button>
+  </div>
+</section>
+
+<nav>
+  <button data-tab="today" class="active"><span class="ic">📅</span>Сегодня</button>
+  <button data-tab="goal"><span class="ic">🎯</span>Цель</button>
+  <button data-tab="stats"><span class="ic">📊</span>Статистика</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== Настройки, которые легко менять под себя (те же, что в боте) =====
+
+const TASKS = [
+  { id: "csharp",  title: "📘 C#: 1 час теории и задач",       points: 20, gamedev: true },
+  { id: "unity",   title: "🎮 Unity: 1 час практики",          points: 20, gamedev: true },
+  { id: "school",  title: "📚 Уроки сделаны",                  points: 15 },
+  { id: "sport",   title: "🏃 Спорт или зарядка",              points: 10 },
+  { id: "walk",    title: "🚶 Прогулка 30+ минут",             points: 10 },
+  { id: "nophone", title: "📵 1 час без телефона",             points: 10 },
+  { id: "people",  title: "🤝 Живое общение: встреча, звонок", points: 15 },
+];
+
+const STAGES = [
+  { title: "1. Основы C#", hours: 40, steps: ["переменные и типы", "условия и циклы", "методы", "массивы и списки", "консольная игра «Угадай число»"] },
+  { title: "2. ООП", hours: 30, steps: ["классы и объекты", "наследование", "интерфейсы", "консольная RPG: герой против монстра"] },
+  { title: "3. Основы Unity", hours: 35, steps: ["интерфейс редактора", "GameObject и компоненты", "скрипты и Update()", "физика и столкновения", "UI: счёт и меню"] },
+  { title: "4. Первая игра", hours: 40, steps: ["идея и мини-дизайн-документ", "прототип", "уровни", "звук и эффекты"] },
+  { title: "5. Полировка и сборка", hours: 15, steps: ["исправить баги", "сборка под ПК/Android", "показать игру друзьям"] },
+];
+
+const DAY_GOAL = 3;    // сколько задач нужно, чтобы день засчитался в серию
+const GAME_COST = 30;  // 30 очков = 30 минут игр
+
+// ===== Telegram и хранилище =====
+
+const tg = window.Telegram && window.Telegram.WebApp;
+const inTelegram = !!(tg && tg.initData);
+if (tg) { tg.ready(); tg.expand(); }
+
+const STORE_KEY = "state_v1";
+
+// Данные хранятся в облаке Telegram (CloudStorage) — отдельно для каждого пользователя,
+// без своего сервера. Вне Telegram (для проверки в браузере) — в localStorage.
+function loadState() {
+  return new Promise(resolve => {
+    if (inTelegram && tg.CloudStorage) {
+      tg.CloudStorage.getItem(STORE_KEY, (err, value) => resolve(parse(err ? null : value)));
+    } else {
+      let value = null;
+      try { value = localStorage.getItem(STORE_KEY); } catch (e) {}
+      resolve(parse(value));
+    }
+  });
+}
+
+function saveState() {
+  const value = JSON.stringify(state);
+  if (inTelegram && tg.CloudStorage) {
+    tg.CloudStorage.setItem(STORE_KEY, value, err => { if (err) toast("Не удалось сохранить 😕"); });
+  } else {
+    try { localStorage.setItem(STORE_KEY, value); } catch (e) {}
+  }
+}
+
+function parse(value) {
+  const empty = { points: 0, balance: 0, streak: 0, lastCountedDay: "", day: "", doneToday: [], totals: {} };
+  if (!value) return empty;
+  try { return Object.assign(empty, JSON.parse(value)); } catch (e) { return empty; }
+}
+
+// ===== Даты (по Москве, как в боте) =====
+
+function moscowDate(offsetDays = 0) {
+  const d = new Date(Date.now() + 3 * 3600 * 1000 + offsetDays * 86400 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+const today = () => moscowDate(0);
+const yesterday = () => moscowDate(-1);
+
+// ===== Логика (та же, что в боте) =====
+
+let state;
+
+function resetDayIfNeeded() {
+  if (state.day !== today()) { state.day = today(); state.doneToday = []; }
+}
+
+const gamedevHours = () => TASKS.filter(t => t.gamedev).reduce((s, t) => s + (state.totals[t.id] || 0), 0);
+const todayPoints = () => TASKS.filter(t => state.doneToday.includes(t.id)).reduce((s, t) => s + t.points, 0);
+const effectiveStreak = () => [today(), yesterday()].includes(state.lastCountedDay) ? state.streak : 0;
+
+function currentStage(hours) {
+  let acc = 0;
+  for (let i = 0; i < STAGES.length; i++) {
+    if (hours < acc + STAGES[i].hours) return { index: i, inStage: hours - acc };
+    acc += STAGES[i].hours;
+  }
+  return { index: STAGES.length, inStage: 0 };
+}
+
+function completeTask(id) {
+  const task = TASKS.find(t => t.id === id);
+  if (state.doneToday.includes(id)) { toast("Уже выполнено ✅"); return; }
+
+  state.doneToday.push(id);
+  state.points += task.points;
+  state.balance += task.points;
+  state.totals[id] = (state.totals[id] || 0) + 1;
+  let msg = `+${task.points} очков! 💪`;
+
+  if (state.doneToday.length >= DAY_GOAL && state.lastCountedDay !== today()) {
+    state.streak = state.lastCountedDay === yesterday() ? state.streak + 1 : 1;
+    state.lastCountedDay = today();
+    msg = `+${task.points} очков! День засчитан 🔥 Серия: ${state.streak}`;
+    haptic("success");
+  } else {
+    haptic("light");
+  }
+  saveState();
+  render();
+  toast(msg);
+}
+
+function spend() {
+  if (state.balance < GAME_COST) { toast(`Нужно ещё ${GAME_COST - state.balance} очков`); return; }
+  state.balance -= GAME_COST;
+  saveState();
+  render();
+  haptic("success");
+  toast(`🎮 ${GAME_COST} минут игр — твои! Потом возвращайся к делам 😉`);
+}
+
+function share() {
+  const name = inTelegram && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.first_name : "Я";
+  const text =
+    `🌱 ${name} в «Живом уровне»:\n` +
+    `Сегодня выполнено ${state.doneToday.length} из ${TASKS.length} дел, серия ${effectiveStreak()} дн.\n` +
+    `Геймдев: ${gamedevHours()} ч. Присоединяйся!`;
+  const url = `https://t.me/share/url?url=${encodeURIComponent(location.href)}&text=${encodeURIComponent(text)}`;
+  if (inTelegram) tg.openTelegramLink(url); else window.open(url, "_blank");
+}
+
+// ===== Отрисовка =====
+
+function render() {
+  const done = state.doneToday.length;
+  const hours = gamedevHours();
+  const totalHours = STAGES.reduce((s, x) => s + x.hours, 0);
+  const st = currentStage(hours);
+
+  // Верхние показатели
+  $("sBalance").textContent = state.balance;
+  $("sStreak").textContent = effectiveStreak();
+  $("sLevel").textContent = Math.floor(state.points / 100) + 1;
+
+  // Сегодня
+  const d = new Date(Date.now() + 3 * 3600 * 1000);
+  $("todayTitle").textContent = `📅 Сегодня, ${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  $("todaySummary").textContent = `Выполнено ${done} из ${TASKS.length} · +${todayPoints()} очков`;
+  $("todayBar").style.width = `${done / TASKS.length * 100}%`;
+  $("dayHint").textContent = done >= DAY_GOAL
+    ? "День засчитан в серию 🔥"
+    : `Ещё ${DAY_GOAL - done} — и день засчитается в серию`;
+
+  $("taskList").innerHTML = TASKS.map(t => {
+    const isDone = state.doneToday.includes(t.id);
+    return `<button class="task ${isDone ? "done" : ""}" data-id="${t.id}">
+      <span class="check">${isDone ? "✓" : ""}</span>
+      <span class="title">${t.title}</span>
+      <span class="pts">+${t.points}</span>
+    </button>`;
+  }).join("");
+
+  $("gameHint").textContent = `${GAME_COST} очков = ${GAME_COST} минут игр. Сейчас на балансе: ${state.balance}.`;
+  $("spendBtn").textContent = `Обменять ${GAME_COST} очков на ${GAME_COST} мин игр`;
+  $("spendBtn").disabled = state.balance < GAME_COST;
+
+  // Цель
+  $("goalSummary").textContent = `Пройдено ${hours} из ${totalHours} ч`;
+  $("goalBar").style.width = `${Math.min(100, hours / totalHours * 100)}%`;
+  $("stageList").innerHTML = STAGES.map((s, i) => {
+    if (i < st.index) return `<div class="stage"><div class="row"><span class="name">✅ ${s.title}</span><span class="muted">${s.hours} ч</span></div></div>`;
+    if (i === st.index) return `<div class="stage current">
+        <div class="row"><span class="name">▶️ ${s.title}</span><span class="muted">${st.inStage} из ${s.hours} ч</span></div>
+        <ul>${s.steps.map(x => `<li>${x}</li>`).join("")}</ul></div>`;
+    return `<div class="stage"><div class="row"><span class="name">⬜ ${s.title}</span><span class="muted">${s.hours} ч</span></div></div>`;
+  }).join("") + (st.index >= STAGES.length ? `<div class="stage"><b>🏆 Цель достигнута!</b></div>` : "");
+
+  // Статистика
+  const lines = [
+    ["Уровень", `${Math.floor(state.points / 100) + 1} (всего ${state.points} очков)`],
+    ["Баланс", `${state.balance} очков`],
+    ["Серия", `${effectiveStreak()} дн. (от ${DAY_GOAL} задач в день)`],
+    ["Часов геймдева", hours],
+    ...TASKS.map(t => [t.title, state.totals[t.id] || 0]),
+  ];
+  $("statsList").innerHTML = lines.map(([a, b]) => `<div class="line"><span>${a}</span><b>${b}</b></div>`).join("");
+}
+
+// ===== Мелочи =====
+
+function $(id) { return document.getElementById(id); }
+
+let toastTimer;
+function toast(text) {
+  const el = $("toast");
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function haptic(kind) {
+  try {
+    if (!inTelegram || !tg.HapticFeedback) return;
+    if (kind === "success") tg.HapticFeedback.notificationOccurred("success");
+    else tg.HapticFeedback.impactOccurred(kind);
+  } catch (e) {}
+}
+
+// ===== Запуск =====
+
+document.querySelector("nav").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("active", x === b));
+  ["today", "goal", "stats"].forEach(t => $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab));
+  window.scrollTo(0, 0);
+});
+$("taskList").addEventListener("click", e => {
+  const b = e.target.closest(".task");
+  if (b) completeTask(b.dataset.id);
+});
+$("spendBtn").addEventListener("click", spend);
+$("shareBtn").addEventListener("click", share);
+
+loadState().then(s => {
+  state = s;
+  resetDayIfNeeded();
+  saveState();
+  if (inTelegram && tg.initDataUnsafe.user) $("hello").textContent = `Привет, ${tg.initDataUnsafe.user.first_name}! Делай важное — получай очки`;
+  render();
+});
+</script>
+</body>
+</html>
